@@ -45,7 +45,7 @@ class WGAN():
 		gpu_options = tf.GPUOptions(allow_growth=True)
 		self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
-	def train(self, sample_folder, training_epoches = 40000, batch_size = 64):
+	def train(self, sample_folder, training_epoches = 40000, batch_size = 128):
 		i = 0
 		self.sess.run(tf.global_variables_initializer())
 		
