@@ -19,6 +19,7 @@ def main():
     img_msk_path = os.path.join("..", '..', 'data', 'data_raw', 'train_masks')
     img_path = os.path.join("..", '..', 'data', 'data_raw', 'train')
     img_target_path = os.path.join("..", '..', 'data', '64x64')
+    img_temp_path = os.path.join("..", '..', 'data', 'temp')
     files = os.listdir(img_path)
 
     for file in tqdm(files):
@@ -37,6 +38,7 @@ def main():
         img_blank = np.ones_like(img) * 255
 
         img_msked = img * img_full_msk + img_blank * (1 - img_full_msk)
+        plt.imsave(os.path.join(img_temp_path, file), img_msked)
 
         img_col = np.sum(img_msk, axis=1)
         img_row = np.sum(img_msk, axis=0)
