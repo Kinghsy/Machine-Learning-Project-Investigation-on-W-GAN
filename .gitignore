@@ -3,7 +3,7 @@
 data/data_raw
 .idea/
 
-
+data_raw/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

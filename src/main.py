@@ -19,119 +19,33 @@ import torchvision.utils as vutils
 from com_utlis import *
 from models import *
 from dataloader import *
+from train_model import *
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, required=True, help='| 64x64 |')
-parser.add_argument('--loss', type=str, required=True, help='| wgangp | wgan | gan |')
+parser.add_argument('--model', type=str, required=True, help='| wgangp | wgan | gan |')
 parser.add_argument('--batchsize', type=int, default=64, help='input batch size')
 parser.add_argument('--imagesize', type=int, default=64, help='input image size (height equals to width)')
 parser.add_argument('--nz', type=int, default=128, help='size of the latent z vector')
-parser.add_argument('--ngf', type=int, default=64)
-parser.add_argument('--ndf', type=int, default=64)
-parser.add_argument('--niter', type=int, default=200, help='number of epochs to train for')
-parser.add_argument("--n_critic", type=int, default=5, help="number of training steps for discriminator per iter")
+parser.add_argument('--ngf', type=int, default=64, help='generator kernel size')
+parser.add_argument('--ndf', type=int, default=64, help='')
+parser.add_argument('--niter', type=int, default=1000, help='number of epochs to train for')
+parser.add_argument("--n_step", type=int, default=4, help="number of training steps for discriminator per iter")
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
-parser.add_argument('--outf', default='temp_floder', help='folder to output images and model checkpoints')
 parser.add_argument('--seed', type=int, help='manual seed')
 parser.add_argument('--nc', type=int, default=3, help='# input channels')
+parser.add_argument('--no_bn', type=bool, default=False, action='store_true',
+                    help='disable batch norm in generator')
+parser.add_argument('--fc', type=bool, default=False, action='store_true',
+                    help='enable MLP generator and MLP discriminator')
 
 opt = parser.parse_args()
 print(opt)
 
-
-def calculate_gradient_penatly(netD, real_imgs, fake_imgs):
-    eta = torch.FloatTensor(real_imgs.size(0), 1, 1, 1).uniform_(0, 1).to(device)
-    eta = eta.expand(real_imgs.size(0), real_imgs.size(1), real_imgs.size(2), real_imgs.size(3)).to(device)
-
-    interpolated = eta * real_imgs + ((1 - eta) * fake_imgs)
-    interpolated.to(device)
-
-    # define it to calculate gradient
-    interpolated = torch.autograd.Variable(interpolated, requires_grad=True)
-
-    # calculate probaility of interpolated examples
-    prob_interpolated = netD(interpolated)
-
-    # calculate gradients of probabilities with respect to examples
-    gradients = autograd.grad(
-        outputs=prob_interpolated,
-        inputs=interpolated,
-        grad_outputs=torch.ones(prob_interpolated.size()).to(device),
-        create_graph=True,
-        retain_graph=True,
-        only_inputs=True,
-    )[0]
-
-    gradients_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * 10
-
-    return gradients_penalty
-
-
-def train(opt, loader, device, nz, netD, netG, optimizerD, optimizerG):
-
-    step = 0
-    for epoch in tqdm(range(opt.niter)):
-        for i, x in enumerate(loader):
-
-            real_imgs = x[0].permute(0, 3, 1, 2).to(device)
-            batch_size = real_imgs.size(0)
-
-            # -----------------
-            #  Train Discriminator
-            # -----------------
-
-            netD.zero_grad()
-            noise = torch.randn(batch_size, nz, 1, 1, device=device)
-            fake_imgs = netG(noise)
-
-
-            real_validity = netD(real_imgs)
-            fake_validity = netD(fake_imgs)
-            gradient_penalty = calculate_gradient_penatly(netD, real_imgs.data, fake_imgs.data)
-
-            # Loss measures generator's ability to fool the discriminator
-            errD = -torch.mean(real_validity) + torch.mean(fake_validity) + gradient_penalty
-
-            errD.backward()
-            optimizerD.step()
-
-            optimizerG.zero_grad()
-
-            # Train the generator every n_critic iterations
-            if step % opt.n_critic == 0:
-                # ---------------------
-                #  Train Generator
-                # ---------------------
-
-                # Generate a batch of images
-                fake_imgs = netG(noise)
-                # Adversarial loss
-                errG = -torch.mean(netD(fake_imgs))
-
-                errG.backward()
-                optimizerG.step()
-
-            print(f'[{epoch + 1}/{opt.niter}][{i}/{len(loader)}] '
-                  f'Loss_D: {errD.item():.4f} '
-                  f'Loss_G: {errG.item():.4f}.')
-
-            if epoch % 1 == 0:
-                vutils.save_image(real_imgs,
-                                  f'{opt.outf}/real_samples.png',
-                                  normalize=True)
-                vutils.save_image(netG(noise).detach(),
-                                  f'{opt.outf}/fake_samples_epoch_{epoch}.png',
-                                  normalize=True)
-            step += 1
-
-        # do checkpointing
-        torch.save(netG, f'{opt.outf}/netG_epoch_{epoch + 1}.pth')
-        torch.save(netD, f'{opt.outf}/netD_epoch_{epoch + 1}.pth')
-
-
 if __name__ == "__main__":
+
     try:
       os.makedirs(opt.outf)
     except OSError:
@@ -158,20 +72,23 @@ if __name__ == "__main__":
     ngf = opt.ngf
     nc = opt.nc
 
-
-    loader = data_loader(opt.dataset, batchsize=opt.batchsize)
+    loader = data_loader(opt.dataset, batch_size=opt.batchsize, img_size=opt.imagesize)
     print("Data loading finished.")
 
-    netG = Generator(nz, ngf, nc, device).to(device)
+
+    netG = Generator(nz, ngf, nc, device, no_bn=opt.no_bn, fc=opt.fc).to(device)
     netG.apply(weights_init)
-    netD = Discriminator(nc, ndf, device).to(device)
+    netD = Discriminator(nc, ndf, device, no_bn=opt.no_bn, fc=opt.fc, model=opt.model).to(device)
     netD.apply(weights_init)
 
-    optimizerD = optim.Adam(netD.parameters(), lr=opt.lr, betas=(0.5, 0.9))
-    optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(0.5, 0.9))
+    if opt.model in ["wgangp", 'gan']:
+        optimizerD = optim.Adam(netD.parameters(), lr=opt.lr, betas=(0.5, 0.9))
+        optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(0.5, 0.9))
+    elif opt.model == "wgan":
+        optimizerD = optim.RMSprop(netD.parameters(), lr=opt.lr)
+        optimizerG = optim.RMSprop(netG.parameters(), lr=opt.lr)
 
-
-    train(opt, loader, device, nz, netD, netG, optimizerD, optimizerG)
+    train(netD, netG, optimizerD, optimizerG, loader, opt.niter, opt.model, device, nz, wclamp=0.01, n_step=opt.n_step)
 
 
 

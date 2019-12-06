@@ -1,36 +1,23 @@
 import os
 
 import torch
-import torch.autograd as autograd
-import torch.nn as nn
-import torch.backends.cudnn as cudnn
-import torch.optim as optim
-import torch.utils.data
-
-from skimage import io
-
-import numpy as np
+import torchvision.datasets as dset
+import torchvision.transforms as transforms
 
 from com_utlis import *
 
-def data_loader(dataset, batchsize=64):
+def data_loader(dataset, batch_size=64, img_size=64):
     datapath = os.path.join("..", "data", dataset)
-    files = os.listdir(datapath)
+    dataset = dset.ImageFolder(root=datapath,
+                               transform=transforms.Compose([
+                                   transforms.Resize(img_size),
+                                   transforms.CenterCrop(img_size),
+                                   transforms.ToTensor(),
+                                   transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                               ]))
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    x = []
-    for file in files:
-        if file in STOP_FILES:
-            continue
-        filepath = os.path.join(datapath, file)
-        img = io.imread(filepath)
-        x.append(img)
-
-    # x = np.array(x)
-    x = torch.Tensor(x)
-    train_data = torch.utils.data.TensorDataset(x)
-    train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=batchsize, shuffle=True)
-
-    return train_dataloader
+    return dataloader
 
 
 if __name__ == "__main__":
